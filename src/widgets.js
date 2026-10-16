@@ -1,169 +1,216 @@
 // -----------------------------------------------------------------------------
-// Dashboard widgets (SDK v0.14+, Gladys 5.1+).
+// Dashboard widget (manifest `widgets`, Gladys 5.1+): `camera`.
 //
-// A widget puts the integration's own data on the Gladys dashboard without a
-// dedicated core widget. The manifest `widgets` field declares its identity
-// (key, label, icon, optional per-instance `settings`); at runtime the
-// integration returns a DECLARATIVE content — `text`, `value`, `gauge`,
-// `status`, `chart`, `card-list`, `image`, `button` — that the core renders
-// with its own theme, dark mode and translations. No HTML, no CSS.
+// The Gladys camera box shows the image only. This widget adds what
+// ZoneMinder knows: whether the monitor is in alarm, its mode, today's
+// events, a button that starts (or cancels) a forced alarm, and one that
+// brings a new image.
 //
-// Each entry of WIDGETS is keyed by the widget `key` and exposes:
-//   - get(gladys, { settings, language, units, config }): the content,
-//     registered by index.js with `gladys.onWidgetGet(key, ...)`;
-//   - action(gladys, { actionKey, params, settings, config }) (optional): a
-//     tapped `button` carrying an `action`, registered with
-//     `gladys.onWidgetAction`.
-//
-// Check your contents in the tests with `validateWidgetContent` (exported by
-// the SDK, see test/widgets.test.js), or run with DEBUG=gladys-integration-sdk
-// to have the SDK log every violation of the vocabulary and the budget.
+// Budget (8 components, 2 texts, 1 status, 4 buttons): a caption, the image,
+// one status list, two buttons.
 // -----------------------------------------------------------------------------
 
-import {
-  createLogger,
-  DEVICE_FEATURE_CATEGORIES,
-  DEVICE_TRANSPORTS,
-  WIDGET_COLORS,
-} from '@gladysassistant/integration-sdk';
-import { identifyDevice } from './devices/index.js';
-import { weatherStation } from './devices/weatherStation.js';
-import { plug } from './devices/plug.js';
-import { light } from './devices/light.js';
+import { WIDGET_COLORS } from '@gladysassistant/integration-sdk';
+import { deviceName, namesFor } from './devices.js';
+import { WIDGET_KEY } from './hub.js';
 
-const logger = createLogger({ name: 'widgets' });
+export const ACTIONS = { START: 'alarm_start_1', CANCEL: 'alarm_cancel_1', REFRESH: 'refresh_1' };
+// How long `get` waits for a first image before showing the caption alone.
+const FIRST_IMAGE_WAIT_MS = 8000;
 
-// Widget key, as declared in the manifest `widgets` field.
-export const DEMO_STATUS_WIDGET = 'demo_status';
-
-// Keys of the `button` actions the demo_status content declares.
-const DEMO_STATUS_ACTIONS = { IDENTIFY_LIGHT: 'identify_light' };
-
-// How the plug transport reads in the status list.
-const TRANSPORT_STATUS = {
-  [DEVICE_TRANSPORTS.LOCAL]: { value: { en: 'Local', fr: 'Locale' }, color: WIDGET_COLORS.SUCCESS },
-  [DEVICE_TRANSPORTS.CLOUD]: { value: { en: 'Cloud', fr: 'Cloud' }, color: WIDGET_COLORS.INFO },
-  [DEVICE_TRANSPORTS.UNREACHABLE]: {
-    value: { en: 'Unreachable', fr: 'Injoignable' },
-    color: WIDGET_COLORS.DANGER,
+export const TEXT = {
+  pick: {
+    en: 'Choose a camera in the settings of this widget.',
+    fr: 'Choisissez une caméra dans les réglages de ce widget.',
+    de: 'Wähle in den Einstellungen dieses Widgets eine Kamera aus.',
+    es: 'Elija una cámara en la configuración de este widget.',
+  },
+  unknown: {
+    en: 'This monitor is no longer in ZoneMinder, or ZoneMinder does not answer.',
+    fr: 'Ce moniteur n’est plus dans ZoneMinder, ou ZoneMinder ne répond pas.',
+    de: 'Dieser Monitor ist nicht mehr in ZoneMinder, oder ZoneMinder antwortet nicht.',
+    es: 'Este monitor ya no está en ZoneMinder, o ZoneMinder no responde.',
+  },
+  imageAt: { en: 'Image', fr: 'Image', de: 'Bild', es: 'Imagen' },
+  noImage: {
+    en: 'No image yet',
+    fr: 'Pas encore d’image',
+    de: 'Noch kein Bild',
+    es: 'Aún no hay imagen',
+  },
+  offline: { en: 'no images', fr: 'pas d’images', de: 'keine Bilder', es: 'sin imágenes' },
+  disabled: { en: 'capture off', fr: 'capture arrêtée', de: 'Aufnahme aus', es: 'captura apagada' },
+  inAlarm: { en: 'In alarm', fr: 'En alarme', de: 'Alarm', es: 'En alarma' },
+  quiet: { en: 'Quiet', fr: 'Calme', de: 'Ruhig', es: 'Tranquila' },
+  start: {
+    en: 'Start an alarm',
+    fr: 'Déclencher l’alarme',
+    de: 'Alarm auslösen',
+    es: 'Activar la alarma',
+  },
+  cancel: {
+    en: 'Cancel the alarm',
+    fr: 'Annuler l’alarme',
+    de: 'Alarm beenden',
+    es: 'Cancelar la alarma',
+  },
+  refresh: { en: 'New image', fr: 'Nouvelle image', de: 'Neues Bild', es: 'Nueva imagen' },
+  started: {
+    en: 'Forced alarm started: ZoneMinder records an event',
+    fr: 'Alarme forcée déclenchée : ZoneMinder enregistre un événement',
+    de: 'Erzwungener Alarm ausgelöst: ZoneMinder zeichnet ein Ereignis auf',
+    es: 'Alarma forzada activada: ZoneMinder graba un evento',
+  },
+  cancelled: {
+    en: 'Forced alarm cancelled',
+    fr: 'Alarme forcée annulée',
+    de: 'Erzwungener Alarm beendet',
+    es: 'Alarma forzada cancelada',
+  },
+  noAnalysis: {
+    en: 'This monitor does not analyse its images: put it in Modect, Mocord or Nodect first.',
+    fr: 'Ce moniteur n’analyse pas ses images : passez-le d’abord en Modect, Mocord ou Nodect.',
+    de: 'Dieser Monitor analysiert seine Bilder nicht: Stelle ihn zuerst auf Modect, Mocord oder Nodect.',
+    es: 'Este monitor no analiza sus imágenes: póngalo primero en Modect, Mocord o Nodect.',
   },
 };
 
-// A live tile references a feature by its external_id: read it from the
-// discovery payload itself, so the widget and the device never disagree.
-function featureExternalId(gladys, config, blueprint, category) {
-  const device = blueprint.buildDevice(gladys, config);
-  return device.features.find((feature) => feature.category === category).external_id;
+const t = (text, language) => text[language] ?? text.en;
+
+export const imageKey = (monitor) => `mon-${monitor.id}-${monitor.imageSeq.toString(36)}`;
+
+/** The short ZoneMinder name of a mode: `Modect`. */
+const modeName = (mode) => (mode ? mode[0].toUpperCase() + mode.slice(1) : '-');
+
+function message(text, language) {
+  return {
+    ttl_seconds: 60,
+    components: [{ type: 'text', variant: 'body', text: t(text, language) }],
+  };
 }
 
-function plugConnectionStatus(gladys, config) {
-  const { transport, degraded } = plug.transport(gladys, config);
-  const { value, color } = TRANSPORT_STATUS[transport];
-  if (degraded) {
-    return {
-      value: { en: `${value.en} (degraded mode)`, fr: `${value.fr} (mode dégradé)` },
-      color: WIDGET_COLORS.WARNING,
-    };
+function timeOf(at, language) {
+  return new Intl.DateTimeFormat(language, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(at));
+}
+
+async function get(hub, { settings, language = 'en' }) {
+  const monitor = settings?.camera ? hub.resolveDevice(settings.camera) : null;
+  if (!monitor) {
+    return message(settings?.camera ? TEXT.unknown : TEXT.pick, language);
   }
-  return { value, color };
+  if (!monitor.image && monitor.online !== false && hub.client && hub.server === 'ok') {
+    // The first look at this camera: wait a little for an image.
+    await Promise.race([
+      hub.grab(monitor).catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, FIRST_IMAGE_WAIT_MS).unref?.()),
+    ]);
+  }
+  const names = namesFor(language);
+  const caption = [
+    monitor.image
+      ? `${t(TEXT.imageAt, language)} ${timeOf(monitor.image.at, language)}`
+      : t(TEXT.noImage, language),
+  ];
+  if (!monitor.enabled) {
+    caption.push(t(TEXT.disabled, language));
+  } else if (monitor.online === false) {
+    caption.push(t(TEXT.offline, language));
+  }
+  const components = [{ type: 'text', variant: 'caption', text: caption.join(' · ') }];
+  if (monitor.image) {
+    components.push({
+      type: 'image',
+      key: imageKey(monitor),
+      alt: deviceName(monitor, language),
+      fit: 'contain',
+    });
+  }
+  components.push({
+    type: 'status',
+    items: [
+      {
+        label: names.alarm,
+        icon: 'bell',
+        value: t(monitor.alarm ? TEXT.inAlarm : TEXT.quiet, language),
+        color: monitor.alarm ? WIDGET_COLORS.DANGER : WIDGET_COLORS.NEUTRAL,
+      },
+      { label: names.mode, icon: 'sliders', value: modeName(monitor.mode) },
+      {
+        label: names.events_today,
+        icon: 'film',
+        value: monitor.eventsToday ?? '-',
+      },
+    ],
+  });
+  if (monitor.alarm) {
+    components.push({
+      type: 'button',
+      label: t(TEXT.cancel, language),
+      icon: 'bell-off',
+      style: 'secondary',
+      action: { key: ACTIONS.CANCEL },
+    });
+  } else if (monitor.analysing && monitor.enabled) {
+    components.push({
+      type: 'button',
+      label: t(TEXT.start, language),
+      icon: 'bell',
+      style: 'secondary',
+      action: { key: ACTIONS.START },
+    });
+  }
+  components.push({
+    type: 'button',
+    label: t(TEXT.refresh, language),
+    icon: 'refresh-cw',
+    style: 'secondary',
+    action: { key: ACTIONS.REFRESH },
+  });
+  return {
+    ttl_seconds: Math.min(Math.max(hub.config.snapshotSeconds, 10), 300),
+    components,
+  };
+}
+
+async function action(hub, { actionKey, settings }) {
+  if (!settings?.camera) {
+    throw new Error(TEXT.pick.en);
+  }
+  const monitor = hub.require(settings.camera);
+  if (actionKey === ACTIONS.REFRESH) {
+    await hub.grab(monitor);
+    return {};
+  }
+  if (actionKey === ACTIONS.START || actionKey === ACTIONS.CANCEL) {
+    const on = actionKey === ACTIONS.START;
+    try {
+      await hub.forceAlarm(monitor, on);
+    } catch (err) {
+      if (err.kind === 'mode') {
+        return { message: TEXT.noAnalysis };
+      }
+      throw err;
+    }
+    return { message: on ? TEXT.started : TEXT.cancelled };
+  }
+  throw new Error(`Unknown action ${actionKey}`);
+}
+
+/** The bytes behind an image key of the widget (raw base64). */
+export async function widgetImage(hub, key) {
+  const match = /^mon-(\d+)-[0-9a-z]+$/.exec(String(key));
+  const monitor = match ? hub.monitors.get(Number(match[1])) : null;
+  if (!monitor?.image) {
+    throw new Error(`Unknown image ${key}`);
+  }
+  // Already fit for Gladys (150 KB), well under the 300 KB of a widget image.
+  return monitor.image.jpeg.toString('base64');
 }
 
 export const WIDGETS = {
-  [DEMO_STATUS_WIDGET]: {
-    // `settings` holds the per-instance values of the declared `settings`
-    // (none here); `language` and `units` are those of the user viewing the
-    // dashboard, for the values you format yourself. Multi-language objects
-    // (`{ en, fr }`) are picked by the core, like everywhere else.
-    async get(gladys, { config }) {
-      logger.debug(`onWidgetGet <- ${DEMO_STATUS_WIDGET}`);
-      return {
-        // Reload policy: the computed parts below only change with the
-        // config, and index.js nudges the widget on every (re)connection and
-        // config update (see refreshWidgets) — the TTL is just a safety net.
-        ttl_seconds: 300,
-        components: [
-          // Device-bound tiles: LIVE, they follow the published states over
-          // the core's real-time path. No TTL, no nudge involved.
-          {
-            type: 'value',
-            label: { en: 'Temperature', fr: 'Température' },
-            icon: 'thermometer',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              weatherStation,
-              DEVICE_FEATURE_CATEGORIES.TEMPERATURE_SENSOR,
-            ),
-          },
-          {
-            type: 'value',
-            label: { en: 'Office plug', fr: 'Prise du bureau' },
-            icon: 'zap',
-            device_feature: featureExternalId(
-              gladys,
-              config,
-              plug,
-              DEVICE_FEATURE_CATEGORIES.ENERGY_SENSOR,
-            ),
-          },
-          // Computed rows: what the integration knows that no device feature
-          // carries. Served from the core cache until the TTL or a nudge.
-          {
-            type: 'status',
-            items: [
-              {
-                label: { en: 'Plug connection', fr: 'Connexion de la prise' },
-                icon: 'wifi',
-                ...plugConnectionStatus(gladys, config),
-              },
-              {
-                label: { en: 'Observed location', fr: 'Position observée' },
-                icon: 'map-pin',
-                value: `${config.latitude.toFixed(2)}, ${config.longitude.toFixed(2)}`,
-                color: WIDGET_COLORS.NEUTRAL,
-              },
-            ],
-          },
-          // `params` are declared HERE and sent back as-is: the handler never
-          // receives user input (a dashboard can hang on a public wall).
-          {
-            type: 'button',
-            label: { en: 'Identify the light', fr: 'Identifier la lampe' },
-            icon: 'eye',
-            style: 'secondary',
-            action: {
-              key: DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT,
-              params: { device: light.deviceExternalId(gladys) },
-            },
-          },
-        ],
-      };
-    },
-
-    // Resolve an optional toast (string or multi-language object, ≤ 200
-    // characters). After a successful action the core drops the cached
-    // content and every open dashboard refetches it: no nudge needed.
-    async action(gladys, { actionKey, params, config }) {
-      logger.info(`onWidgetAction <- ${DEMO_STATUS_WIDGET}.${actionKey}`);
-      if (actionKey === DEMO_STATUS_ACTIONS.IDENTIFY_LIGHT) {
-        return identifyDevice(gladys, params.device, config);
-      }
-      // Throwing acks the action as failed: the message reaches the user.
-      throw new Error(`Unknown widget action: ${actionKey}`);
-    },
-  },
+  [WIDGET_KEY]: { get, action },
 };
-
-/**
- * Freshness nudge: ask the core to re-pull every widget NOW instead of
- * waiting for the content TTL. Call it when you KNOW a computed content
- * changed (here: the config, which drives the plug transport and the observed
- * location) — and after every (re)connection, since the nudges are
- * fire-and-forget: rate-limited core-side to 1 per 10 s per widget, dropped
- * silently while disconnected.
- */
-export function refreshWidgets(gladys) {
-  for (const key of Object.keys(WIDGETS)) {
-    gladys.requestWidgetRefresh(key);
-  }
-}

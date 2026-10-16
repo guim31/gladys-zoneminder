@@ -16,8 +16,8 @@ its only runtime dependency. It started from the official JavaScript template.
 ```bash
 npm install
 npm test                                  # node --test, the built-in runner
-node --test test/devices.test.js          # one file
-node --test --test-name-pattern "plug"    # tests whose name matches
+node --test test/hub.test.js              # one file
+node --test --test-name-pattern "alarm"   # tests whose name matches
 npm run lint                              # ESLint
 npm run format:check                      # Prettier, as the CI runs it
 npm run format                            # Prettier, fix in place
@@ -32,15 +32,19 @@ pushing.
 
 ```
 index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
+src/app.js                        every SDK handler, on the real SDK or the tests' fake Gladys
+src/hub.js                        the server, its monitors, timers, states, images, triggers
+src/devices.js                    one Gladys device per ZoneMinder monitor (features, names)
+src/zoneminder/client.js          HTTP client: token login, monitors, alarms, events, images
 src/scenes.js                     scene action handlers (manifest `scene_actions`)
 src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+src/texts.js                      connection status and "Check the connection" report
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
 gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (mandatory)
+test/                             node --test, against the SDK's fake Gladys and a fake ZoneMinder
+test/helpers/fakeZoneMinder.js    simulated ZoneMinder 1.36 / 1.38 behind the `fetch` seam
+test/fixtures/zoneminder/         answers recorded from real 1.36.4 and 1.38.6 servers
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +74,9 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German and Spanish: action
+  messages, manifest texts, feature names, widget texts, and
+  `docs/{en,fr,de,es}.md`, kept in sync (`test/i18n.test.js`).
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +238,42 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## ZoneMinder : API et pièges (16/10/2026)
+
+Vérifié contre de vrais serveurs en Docker : `mirror.gcr.io/zoneminderhq/zoneminder:latest-ubuntu18.04`
+(**1.36.4**, MariaDB intégrée, racine web `/zm`) et `ghcr.io/zoneminder-containers/zoneminder-base:latest`
+(**1.38.6**, MariaDB à part sous l'alias `db`, racine web `/`). Caméras = conteneurs de l'image 1.36 lancés en
+boucle `ffmpeg -re -f lavfi -i testsrc2 … -f mpjpeg -listen 1 http://0.0.0.0:8081/cam.mjpg` (un client par flux ;
+`testsrc2` donne un mouvement permanent, `smptebars` aucun). Moniteurs et zones insérés en SQL (l'API de création
+de la 1.36 refuse `OutputCodec`, la 1.38 exige un `Device` en `/dev/…` même pour Ffmpeg).
+
+- **Authentification** : `POST api/host/login.json` (`user`, `pass`) → `access_token` (2 h), passé en
+  `?token=`. Auth coupée (`OPT_USE_AUTH=0`) : 200 avec `access_token: null`, rien à envoyer. Un utilisateur
+  sans **`APIEnabled`** reçoit 401 « API disabled for: … » ; un 401 « Insufficient privileges » est un
+  **droit manquant**, pas un jeton expiré (ne pas se reconnecter en boucle). **Les corps d'erreur répètent
+  l'URL, jeton compris** : ne jamais les journaliser tels quels (`scrub`).
+- **Racine web** : `/zm` (paquets) ou `/` (certaines images) ; sans chemin dans l'adresse, on essaie les deux
+  (un 404 HTML sur le login = mauvais chemin). `nph-zms` est à `ZM_PATH_ZMS` (`/zm/cgi-bin/nph-zms` ou
+  `/cgi-bin/nph-zms`), lu par `configs/viewByName`.
+- **Types** : la 1.36 écrit tous les nombres en chaînes (`"Id":"1"`), la 1.38 en nombres. La 1.38 a un champ
+  `Deleted` (suppression douce) : à filtrer.
+- **Mode** : en 1.36, `Function` pilote tout. **Dès la 1.37, `Function` est stocké mais ignoré** :
+  `Capturing` (None/Ondemand/Always), `Analysing` (None/Always), `Recording` (None/OnMotion/Always). Le
+  vocabulaire de l'intégration reste celui des cinq fonctions, traduit dans les deux sens (`SETTINGS_OF_MODE`).
+  Une écriture refusée par la validation revient en **200** avec `message` ≠ `"Saved"`.
+- **État en ligne** : `Monitor_Status.Status` vaut `Connected` seulement quand des images arrivent ;
+  `Running`/`NotRunning` sinon. Une caméra injoignable donne quand même une image (mire « pas de signal ») :
+  l'image ne prouve rien. `UpdatedOn` de la 1.38 est en UTC.
+- **Alarme** : `monitors/alarm/id:N/command:status` → 0 repos, 1 pré-alarme, 2 alarme, 3 alerte (images après
+  l'alarme), 4 enregistrement. `command:on` crée un événement « Forced Web » qui dure jusqu'à `command:off`.
+  Sur un moniteur qui n'analyse pas, la 1.36 répond 200 « cannot handle alarms » et **la 1.38 bloque jusqu'au
+  504 de nginx (60 s)** : l'intégration refuse avant d'envoyer. La 1.36 laisse un compte « View » forcer une
+  alarme (bogue de ZoneMinder, pas de l'intégration).
+- **Événements** : `events/index/Id >:N.json?sort=Id&direction=asc` pour les nouveaux ;
+  `events/index/MonitorId:N/StartDateTime >=:<minuit local>.json?limit=1` → `pagination.count` pour le compte
+  du jour. `Event_Summary.DayEvents` est une fenêtre glissante de 24 h, pas « aujourd'hui ». `MaxScore` d'un
+  événement en cours peut encore monter ; `Cause` est libre (`Motion`, `Motion:All`, `Forced Web`,
+  `Continuous`, `Signal`, `Linked`…), d'où `eventKind`.
+- **Image** : `nph-zms?mode=single&monitor=N&scale=P&token=…`. Jeton refusé : **403 en 1.36, 200 vide en 1.38**.
+- Pas de webhook : le conteneur n'a pas de port joignable ; tout passe par la lecture périodique.
