@@ -13,8 +13,8 @@ sur [GitHub](https://github.com/guim31/gladys-zoneminder/issues) ou sur le forum
 ## Ce qu'il vous faut
 
 - Gladys 5.1 ou plus récent.
-- Un serveur ZoneMinder joignable depuis Gladys sur le réseau local, version 1.34 ou plus récente (son
-  API donne des jetons depuis la 1.34). La 1.36 et les 1.37+ sont prises en charge : à partir de la
+- Un serveur ZoneMinder joignable depuis Gladys sur le réseau local, version 1.36 ou plus récente. La
+  1.36 et les 1.37+ sont prises en charge : à partir de la
   1.37, le mode est fait des réglages « Analysing » et « Recording », que l'intégration lit et écrit.
 - L'API activée : **Options → System → OPT_USE_API** (activée par défaut).
 - Si ZoneMinder demande une connexion (**OPT_USE_AUTH**), un compte avec **API Enabled** coché dans
@@ -80,7 +80,7 @@ seulement pour un moniteur en Modect, Mocord ou Nodect) et **Nouvelle image**.
 ### Actions
 
 - **ZoneMinder : changer le mode** : règle le mode d'une caméra, ou de toutes quand la caméra est
-  laissée vide. Seuls les moniteurs dont le mode change sont écrits (chacun redémarre quelques
+  laissée vide. « Toutes » désigne celles ajoutées dans Gladys et qui capturent. Seuls les moniteurs dont le mode change sont écrits (chacun redémarre quelques
   secondes). Sortie : le nombre de caméras modifiées.
 - **ZoneMinder : alarme forcée** : **Déclencher** fait enregistrer à ZoneMinder un événement (cause
   « Forced Web ») jusqu'à **Annuler**. Seulement pour un moniteur en Modect, Mocord ou Nodect.
@@ -130,6 +130,7 @@ L'action **Envoyer une image de caméra** du cœur envoie la dernière image d'u
   images d'un moniteur sont demandées à l'adresse de la configuration.
 - Le mode « None » (pas de capture) et l'arrêt d'un moniteur ne sont pas proposés : faites-le dans
   ZoneMinder.
+- Sous ZoneMinder 1.37+, Nodect signifie sans analyse : une alarme forcée y demande un moniteur qui analyse (Modect, Mocord). Un moniteur arrêté dans ZoneMinder garde son mode.
 - Développée sans installation ZoneMinder en service depuis longtemps : vos retours sont les
   bienvenus.
 

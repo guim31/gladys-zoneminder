@@ -13,8 +13,8 @@ no en una instalación en servicio desde hace tiempo: sus comentarios son bienve
 ## Lo que necesita
 
 - Gladys 5.1 o posterior.
-- Un servidor ZoneMinder accesible desde Gladys en la red local, versión 1.34 o posterior (su API da
-  tokens desde la 1.34). Se admiten la 1.36 y las 1.37+: a partir de la 1.37, el modo está hecho de los
+- Un servidor ZoneMinder accesible desde Gladys en la red local, versión 1.36 o posterior. Se admiten
+  la 1.36 y las 1.37+: a partir de la 1.37, el modo está hecho de los
   ajustes «Analysing» y «Recording», que la integración lee y escribe.
 - La API activada: **Options → System → OPT_USE_API** (activada por defecto).
 - Si ZoneMinder pide un inicio de sesión (**OPT_USE_AUTH**), una cuenta con **API Enabled** marcado en
@@ -78,7 +78,7 @@ Modect, Mocord o Nodect) y **Nueva imagen**.
 ### Acciones
 
 - **ZoneMinder: cambiar el modo**: ajusta el modo de una cámara, o de todas cuando la cámara se deja
-  vacía. Solo se escriben los monitores cuyo modo cambia (cada uno se reinicia unos segundos). Salida:
+  vacía. «Todas» son las añadidas en Gladys y que capturan. Solo se escriben los monitores cuyo modo cambia (cada uno se reinicia unos segundos). Salida:
   el número de cámaras modificadas.
 - **ZoneMinder: alarma forzada**: **Activar** hace que ZoneMinder grabe un evento (causa «Forced Web»)
   hasta **Cancelar**. Solo para un monitor en Modect, Mocord o Nodect.
@@ -126,6 +126,7 @@ de **ZoneMinder: nuevo evento**, es la imagen de ese evento.
 - Un servidor ZoneMinder por integración. Con varios servidores ZoneMinder (multiservidor), las
   imágenes de un monitor se piden a la dirección de la configuración.
 - El modo «None» (sin captura) y apagar un monitor no se ofrecen: hágalo en ZoneMinder.
+- En ZoneMinder 1.37+, Nodect significa sin análisis: una alarma forzada requiere un monitor que analice (Modect, Mocord). Un monitor apagado en ZoneMinder conserva su modo.
 - Desarrollada sin una instalación ZoneMinder en servicio desde hace tiempo: sus comentarios son
   bienvenidos.
 

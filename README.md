@@ -38,7 +38,7 @@ welcome in the [issues](https://github.com/guim31/gladys-zoneminder/issues).
 ## Requirements
 
 - Gladys 5.1.0 or later.
-- ZoneMinder 1.34 or later, reachable from Gladys on the local network, with
+- ZoneMinder 1.36 or later, reachable from Gladys on the local network, with
   its API on (`OPT_USE_API`) and, when it asks for a login, an account with
   "API Enabled" ("Monitors: Edit" to change modes).
 
@@ -81,8 +81,7 @@ address and account in the **Configuration** tab, and add the monitors from the
   (`test/fixtures/zoneminder/`) are those servers' answers, anonymized. The
   integration itself ran in its locked-down container (read-only, no
   capabilities, 256 MB) against the 1.36 server.
-- Not checked: a long-running installation with real cameras, ZoneMinder 1.34
-  and 1.37, a multi-server setup, a reverse proxy, a Gladys instance (the
+- Not checked: a long-running installation with real cameras, ZoneMinder 1.37, a multi-server setup, a reverse proxy, a Gladys instance (the
   integration was run against the SDK's fake Gladys).
 
 ## Limitations

@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------------
-// HTTP client of one ZoneMinder server (1.34 and later: the JWT API).
+// HTTP client of one ZoneMinder server (1.36 and later: the JWT API).
 //
 // What the integration uses, all under the web root of ZoneMinder (`/zm` on a
 // packaged install, `/` on some containers: both are tried when the address
@@ -51,9 +51,11 @@ const SETTINGS_OF_MODE = {
   mocord: { Analysing: 'Always', Recording: 'Always' },
   nodect: { Analysing: 'None', Recording: 'OnMotion' },
 };
-// The modes in which ZoneMinder analyses frames: the only ones where a forced
-// alarm is taken (1.36 refuses the others, 1.38 hangs on them).
-export const ALARM_MODES = ['modect', 'mocord', 'nodect'];
+// Whether a monitor in this mode analyses its frames, the condition of a
+// forced alarm (1.36 refuses the others, 1.38 hangs on them). Nodect analyses
+// on 1.36 only: on 1.37+ it is written as Analysing None.
+export const analysesIn = (mode, split = false) =>
+  ['modect', 'mocord', ...(split ? [] : ['nodect'])].includes(mode);
 
 export const ALARM_STATES = { IDLE: 0, PREALARM: 1, ALARM: 2, ALERT: 3, TAPE: 4 };
 
@@ -116,12 +118,16 @@ export function normalizeMonitor(entry) {
     capturing = monitor.Function !== 'None';
     mode = MODES.find((key) => FUNCTION_OF_MODE[key] === monitor.Function) ?? null;
   }
+  // 1.37+: analysis is its own setting (Analysing Always with Recording None
+  // is valid there, and matches none of the five modes).
+  const analysing = split ? monitor.Analysing === 'Always' : analysesIn(mode);
   return {
     id: number(monitor.Id),
     name: String(monitor.Name ?? '').trim(),
     enabled: number(monitor.Enabled) === 1 && capturing,
     mode,
     split,
+    analysing,
     deleted: monitor.Deleted === true || monitor.Deleted === '1' || monitor.Deleted === 1,
     serverId: monitor.ServerId ?? null,
     // Only "Connected" means frames are coming in: "Running" is said of a
@@ -174,7 +180,11 @@ function apiMessage(body) {
     return '';
   }
   const text = body.data?.message ?? body.message ?? body.name ?? '';
-  return scrub(typeof text === 'string' ? text : JSON.stringify(text)).slice(0, 200);
+  // 1.36 escapes its messages as HTML (`&quot;admin&quot;`).
+  return scrub(typeof text === 'string' ? text : JSON.stringify(text))
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .slice(0, 200);
 }
 
 async function readLimited(response, limit) {
@@ -316,7 +326,7 @@ export class ZoneMinderClient {
       : Infinity;
     if (!this.token && this.username && body.access_token === undefined) {
       // A ZoneMinder older than 1.34 (no JWT): not supported.
-      throw new ZoneMinderError('ZoneMinder is too old: version 1.34 or later is needed', {
+      throw new ZoneMinderError('ZoneMinder is too old: version 1.36 or later is needed', {
         kind: 'http',
       });
     }
@@ -408,10 +418,8 @@ export class ZoneMinderClient {
     }
     const form = monitor.split
       ? Object.fromEntries(
-          Object.entries({ Capturing: 'Always', ...SETTINGS_OF_MODE[mode] }).map(([key, value]) => [
-            `Monitor[${key}]`,
-            value,
-          ]),
+          // Capturing is left as it is: turning a camera on stays ZoneMinder's.
+          Object.entries(SETTINGS_OF_MODE[mode]).map(([key, value]) => [`Monitor[${key}]`, value]),
         )
       : { 'Monitor[Function]': FUNCTION_OF_MODE[mode] };
     const body = await this.api(`monitors/${monitor.id}.json`, { method: 'POST', form });

@@ -23,9 +23,13 @@ async function setMode(hub, { fields }) {
   if (!MODES.includes(fields?.mode)) {
     throw new Error(`Unknown mode "${fields?.mode}": ${MODES.join(', ')}`);
   }
-  const monitors = fields?.camera ? [hub.require(fields.camera)] : [...hub.monitors.values()];
+  // "Every camera": those added in Gladys and capturing; a monitor turned off
+  // in ZoneMinder, or left out of Gladys, is not the user's to change here.
+  const monitors = fields?.camera
+    ? [hub.require(fields.camera)]
+    : [...hub.monitors.values()].filter((monitor) => monitor.enabled && hub.isCreated(monitor));
   if (monitors.length === 0) {
-    throw new Error('No ZoneMinder monitor known');
+    throw new Error('No ZoneMinder camera added in Gladys');
   }
   const changed = await hub.setMode(monitors, fields.mode);
   return { cameras: changed };

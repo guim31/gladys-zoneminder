@@ -13,8 +13,8 @@ noch nicht mit einer lange laufenden Installation: Rückmeldungen sind willkomme
 ## Was du brauchst
 
 - Gladys 5.1 oder neuer.
-- Einen ZoneMinder-Server, den Gladys im lokalen Netzwerk erreicht, Version 1.34 oder neuer (seine API
-  gibt seit 1.34 Tokens aus). 1.36 und 1.37+ werden unterstützt: Ab 1.37 besteht der Modus aus den
+- Einen ZoneMinder-Server, den Gladys im lokalen Netzwerk erreicht, Version 1.36 oder neuer. 1.36 und
+  1.37+ werden unterstützt: Ab 1.37 besteht der Modus aus den
   Einstellungen „Analysing“ und „Recording“, die die Integration liest und schreibt.
 - Die eingeschaltete API: **Options → System → OPT_USE_API** (standardmäßig an).
 - Wenn ZoneMinder eine Anmeldung verlangt (**OPT_USE_AUTH**), ein Konto mit angehaktem **API Enabled**
@@ -80,7 +80,7 @@ für einen Monitor in Modect, Mocord oder Nodect) und **Neues Bild**.
 ### Aktionen
 
 - **ZoneMinder: Modus ändern**: stellt den Modus einer Kamera ein, oder aller Kameras, wenn die Kamera
-  leer bleibt. Nur Monitore, deren Modus sich ändert, werden geschrieben (jeder startet einige
+  leer bleibt. „Alle“ meint die in Gladys hinzugefügten, aufnehmenden Kameras. Nur Monitore, deren Modus sich ändert, werden geschrieben (jeder startet einige
   Sekunden neu). Ausgabe: die Zahl der geänderten Kameras.
 - **ZoneMinder: erzwungener Alarm**: **Auslösen** lässt ZoneMinder ein Ereignis aufzeichnen (Ursache
   „Forced Web“), bis **Beenden**. Nur für einen Monitor in Modect, Mocord oder Nodect.
@@ -128,6 +128,7 @@ Die Kern-Aktion **Kameraaufnahme senden** sendet das letzte Bild einer Kamera: d
   Bilder eines Monitors bei der Adresse der Konfiguration angefragt.
 - Der Modus „None“ (keine Aufnahme) und das Ausschalten eines Monitors werden nicht angeboten: mach das
   in ZoneMinder.
+- Unter ZoneMinder 1.37+ bedeutet Nodect ohne Analyse: ein erzwungener Alarm braucht dort einen analysierenden Monitor (Modect, Mocord). Ein in ZoneMinder ausgeschalteter Monitor behält seinen Modus.
 - Ohne lange laufende ZoneMinder-Installation entwickelt: Rückmeldungen sind willkommen.
 
 Diese Integration ist nicht mit dem ZoneMinder-Projekt verbunden.

@@ -25,10 +25,10 @@
         "es": "Su servidor ZoneMinder"
       },
       "description": {
-        "en": "ZoneMinder 1.34 or later, with \"OPT_USE_API\" on. Enter the address of its web page and an account with \"API Enabled\" (Options → Users). Then open the Discovery tab: one device per monitor.",
-        "fr": "ZoneMinder 1.34 ou plus récent, avec « OPT_USE_API » activé. Saisissez l'adresse de sa page web et un compte avec « API Enabled » (Options → Users). Ouvrez ensuite l'onglet Découverte : un appareil par moniteur.",
-        "de": "ZoneMinder 1.34 oder neuer, mit aktiviertem „OPT_USE_API“. Gib die Adresse seiner Weboberfläche und ein Konto mit „API Enabled“ ein (Options → Users). Öffne dann den Tab „Entdecken“: ein Gerät pro Monitor.",
-        "es": "ZoneMinder 1.34 o posterior, con «OPT_USE_API» activado. Introduzca la dirección de su página web y una cuenta con «API Enabled» (Options → Users). Luego abra la pestaña Descubrir: un dispositivo por monitor."
+        "en": "ZoneMinder 1.36 or later, with \"OPT_USE_API\" on. Enter the address of its web page and an account with \"API Enabled\" (Options → Users). Then open the Discovery tab: one device per monitor.",
+        "fr": "ZoneMinder 1.36 ou plus récent, avec « OPT_USE_API » activé. Saisissez l'adresse de sa page web et un compte avec « API Enabled » (Options → Users). Ouvrez ensuite l'onglet Découverte : un appareil par moniteur.",
+        "de": "ZoneMinder 1.36 oder neuer, mit aktiviertem „OPT_USE_API“. Gib die Adresse seiner Weboberfläche und ein Konto mit „API Enabled“ ein (Options → Users). Öffne dann den Tab „Entdecken“: ein Gerät pro Monitor.",
+        "es": "ZoneMinder 1.36 o posterior, con «OPT_USE_API» activado. Introduzca la dirección de su página web y una cuenta con «API Enabled» (Options → Users). Luego abra la pestaña Descubrir: un dispositivo por monitor."
       },
       "links": [
         {

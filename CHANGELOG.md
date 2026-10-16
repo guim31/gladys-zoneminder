@@ -12,7 +12,7 @@ the notes of the version's GitHub Release.
 
 ### Added
 
-- ZoneMinder servers (1.34 and later, tested on 1.36 and 1.38), reached at the
+- ZoneMinder servers (1.36 and later, tested on 1.36 and 1.38), reached at the
   address of the configuration (`/zm` or the web root found on their own),
   with or without a login.
 - One Gladys camera per monitor: its image, sent at the chosen pace and at once

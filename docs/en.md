@@ -13,8 +13,8 @@ not yet on a long-running installation: feedback welcome on
 ## What you need
 
 - Gladys 5.1 or later.
-- A ZoneMinder server reachable from Gladys on the local network, version 1.34 or later (its API gives
-  tokens since 1.34). 1.36 and 1.37+ are both supported: from 1.37 on, the mode is made of the
+- A ZoneMinder server reachable from Gladys on the local network, version 1.36 or later. 1.36 and
+  1.37+ are both supported: from 1.37 on, the mode is made of the
   "Analysing" and "Recording" settings, and the integration reads and writes those.
 - The API turned on: **Options → System → OPT_USE_API** (on by default).
 - If ZoneMinder asks for a login (**OPT_USE_AUTH**), an account with **API Enabled** ticked in
@@ -77,7 +77,7 @@ Modect, Mocord or Nodect) and **New image**.
 ### Actions
 
 - **ZoneMinder: change the mode**: sets the mode of one camera, or of every camera when the camera is
-  left empty. Only the monitors whose mode changes are written (each restarts for a few seconds).
+  left empty. Every camera means those added in Gladys and capturing. Only the monitors whose mode changes are written (each restarts for a few seconds).
   Output: the number of cameras changed.
 - **ZoneMinder: forced alarm**: **Start** makes ZoneMinder record an event (cause "Forced Web") until
   **Cancel**. Only for a monitor in Modect, Mocord or Nodect.
@@ -123,6 +123,7 @@ new event**, it is the image of that event.
 - One ZoneMinder server per integration. With several ZoneMinder servers (multi-server), the images of
   a monitor are asked to the address of the configuration.
 - The mode "None" (no capture) and turning a monitor off are not offered: do it in ZoneMinder.
+- On ZoneMinder 1.37+, Nodect means no analysis: a forced alarm there needs a monitor that analyses (Modect, Mocord). A monitor turned off in ZoneMinder keeps its mode.
 - Developed without a long-running ZoneMinder installation: feedback welcome.
 
 This integration is not affiliated with the ZoneMinder project.

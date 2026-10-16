@@ -164,9 +164,7 @@ for (const version of ['1.36', '1.38']) {
     assert.equal(ack.success, true, ack.error);
     assert.deepEqual(
       world.server.writes.at(-1).changes,
-      version === '1.36'
-        ? { Function: 'Mocord' }
-        : { Capturing: 'Always', Analysing: 'Always', Recording: 'Always' },
+      version === '1.36' ? { Function: 'Mocord' } : { Analysing: 'Always', Recording: 'Always' },
     );
     assert.equal(lastState(world, 2, 'mode'), 'mocord');
     await world.hub.refresh();
@@ -307,4 +305,80 @@ test('a monitor removed from ZoneMinder leaves the discovery list', async (t) =>
     world.fake.discoveredDevices.map((device) => device.name),
     ['Front door', 'Porch'],
   );
+});
+
+test('two alarm checks at once: each new event fires once', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createAll(world);
+  await world.hub.pollAll();
+  world.server.addEvent(1);
+  world.server.addEvent(3);
+  await Promise.all([world.hub.pollAll(), world.hub.pollAll()]);
+  await world.hub.idle();
+  assert.equal(world.fake.sceneEvents.filter((e) => e.key === TRIGGERS.EVENT).length, 2);
+});
+
+test('ZoneMinder down: its cameras go offline, with the trigger', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createAll(world);
+  world.server.down = true;
+  await world.hub.pollAll();
+  assert.equal(
+    world.fake.sceneEvents.length,
+    0,
+    'one lost answer of the fast check is not an outage',
+  );
+  await world.hub.refresh();
+  await world.hub.idle();
+  assert.deepEqual(world.fake.sceneEvents.map((event) => event.data.camera_name).sort(), [
+    'Front door',
+    'Porch',
+  ]);
+});
+
+test('a monitor list read before a change of mode does not bring the old mode back', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createAll(world);
+  const garage = world.hub.monitors.get(2);
+  const stale = { ...garage, mode: 'monitor', analysing: false };
+  await world.fake.sceneAction('set_mode', { camera: idOf(world, 2), mode: 'modect' });
+  world.hub.applyMonitor(garage, stale, garage.modeWrittenAt - 1);
+  assert.equal(garage.mode, 'modect');
+});
+
+test('every camera: a monitor turned off in ZoneMinder is left alone', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createAll(world);
+  world.server.set(2, 'Function', 'None');
+  await world.hub.refresh();
+  const ack = await world.fake.sceneAction('set_mode', { mode: 'mocord' });
+  assert.equal(ack.success, true, ack.error);
+  assert.deepEqual(
+    world.server.writes.map((write) => write.id),
+    [1, 3],
+  );
+  const one = await world.fake.sceneAction('set_mode', { camera: idOf(world, 2), mode: 'mocord' });
+  assert.match(one.error, /turned off in ZoneMinder/);
+});
+
+test('ZoneMinder 1.38: forced alarm follows Analysing, not the mode name', async (t) => {
+  const world = await createWorld({ server: new FakeZoneMinder({ version: '1.38' }) });
+  t.after(() => world.app.stop());
+  await createAll(world);
+  // Nodect is written as Analysing None on 1.37+: 1.38 would hang.
+  await world.fake.sceneAction('set_mode', { camera: idOf(world, 3), mode: 'nodect' });
+  let ack = await world.fake.sceneAction('force_alarm', {
+    camera: idOf(world, 3),
+    command: 'start',
+  });
+  assert.match(ack.error, /does not analyse/);
+  // Analysing with no recording: no mode of the five, alarms taken.
+  world.server.set(2, 'Analysing', 'Always');
+  await world.hub.refresh();
+  ack = await world.fake.sceneAction('force_alarm', { camera: idOf(world, 2), command: 'start' });
+  assert.equal(ack.success, true, ack.error);
 });

@@ -13,7 +13,6 @@
 import { WIDGET_COLORS } from '@gladysassistant/integration-sdk';
 import { deviceName, namesFor } from './devices.js';
 import { WIDGET_KEY } from './hub.js';
-import { ALARM_MODES } from './zoneminder/client.js';
 
 export const ACTIONS = { START: 'alarm_start_1', CANCEL: 'alarm_cancel_1', REFRESH: 'refresh_1' };
 // How long `get` waits for a first image before showing the caption alone.
@@ -155,7 +154,7 @@ async function get(hub, { settings, language = 'en' }) {
       style: 'secondary',
       action: { key: ACTIONS.CANCEL },
     });
-  } else if (ALARM_MODES.includes(monitor.mode) && monitor.enabled) {
+  } else if (monitor.analysing && monitor.enabled) {
     components.push({
       type: 'button',
       label: t(TEXT.start, language),

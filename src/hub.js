@@ -20,7 +20,7 @@ import { createLogger } from '@gladysassistant/integration-sdk';
 import { connectionKey } from './config.js';
 import { FEATURE_KEYS, buildDevice, deviceIds, deviceName, featureKeyOf } from './devices.js';
 import {
-  ALARM_MODES,
+  analysesIn,
   ALARM_STATES,
   MODES,
   ZoneMinderClient,
@@ -234,6 +234,7 @@ export class ZoneMinderHub {
       return;
     }
     let list;
+    const startedAt = Date.now();
     try {
       list = await this.client.listMonitors();
     } catch (err) {
@@ -250,7 +251,7 @@ export class ZoneMinderHub {
       seen.add(item.id);
       const monitor = this.monitors.get(item.id) ?? this.newMonitor(item.id);
       this.monitors.set(item.id, monitor);
-      this.applyMonitor(monitor, item);
+      this.applyMonitor(monitor, item, startedAt);
     }
     for (const id of [...this.monitors.keys()]) {
       if (!seen.has(id)) {
@@ -273,6 +274,7 @@ export class ZoneMinderHub {
       name: '',
       enabled: true,
       mode: null,
+      analysing: false,
       split: false,
       connected: null,
       online: null,
@@ -286,10 +288,14 @@ export class ZoneMinderHub {
     };
   }
 
-  applyMonitor(monitor, item) {
+  applyMonitor(monitor, item, readAt = Date.now()) {
     monitor.name = item.name;
     monitor.enabled = item.enabled;
-    monitor.mode = item.mode;
+    // A list read before the integration wrote a mode speaks of the old one.
+    if (readAt >= (monitor.modeWrittenAt ?? 0)) {
+      monitor.mode = item.mode;
+      monitor.analysing = item.analysing;
+    }
     monitor.split = item.split;
     monitor.connected = item.connected;
     if (!monitor.enabled && monitor.alarm) {
@@ -328,13 +334,13 @@ export class ZoneMinderHub {
     }
     if (state !== 'ok') {
       // Nothing can be read any more: no stale alarm, no "local" badge.
+      const outage = state === 'unreachable' || state === 'error';
       for (const monitor of this.monitors.values()) {
-        monitor.online = false;
         monitor.alarm = monitor.alarm === null ? null : false;
         await this.publishStates(monitor);
+        // ZoneMinder down: its cameras are lost too ("Camera offline").
+        await this.setOnline(monitor, false, { quiet: !outage });
       }
-      await this.publishTransports();
-      this.requestWidgetRefresh();
     }
     try {
       if (state === 'ok') {
@@ -574,9 +580,20 @@ export class ZoneMinderHub {
 
   /** One alarm check: every monitor added in Gladys, then the new events. */
   async pollAll() {
-    if (!this.client || this.server !== 'ok') {
+    // A slow check (images, a server taking its time) is not run twice at
+    // once: the same new event would fire twice.
+    if (!this.client || this.server !== 'ok' || this.pollingAll) {
       return;
     }
+    this.pollingAll = true;
+    try {
+      await this.doPollAll();
+    } finally {
+      this.pollingAll = false;
+    }
+  }
+
+  async doPollAll() {
     const monitors = [...this.monitors.values()].filter(
       (monitor) => monitor.enabled && !monitor.polling && this.isCreated(monitor),
     );
@@ -613,9 +630,11 @@ export class ZoneMinderHub {
     try {
       state = await this.client.alarmState(monitor.id);
     } catch (err) {
-      if (err.kind === 'auth' || err.kind === 'network') {
+      if (err.kind === 'auth') {
         await this.serverFailed(err);
       } else {
+        // A network error waits for the monitor check, once a minute: one
+        // lost answer is not an outage.
         logger.debug(`Monitor ${monitor.id}: ${err.message}`);
       }
       return;
@@ -642,11 +661,12 @@ export class ZoneMinderHub {
         return;
       }
       const events = await this.client.eventsAfter(this.lastEventId, this.timings.eventBatch);
+      // Moved past the whole batch at once, before any wait.
+      this.lastEventId = Math.max(this.lastEventId, ...events.map((event) => event.id));
       const today = localMidnight(this.now()).slice(0, 10);
       const touched = new Set();
       const imaged = new Set();
       for (const event of events) {
-        this.lastEventId = Math.max(this.lastEventId, event.id);
         const monitor = this.monitors.get(event.monitorId);
         if (!monitor || !this.isCreated(monitor)) {
           continue;
@@ -679,9 +699,11 @@ export class ZoneMinderHub {
         this.requestWidgetRefresh();
       }
     } catch (err) {
-      if (err.kind === 'auth' || err.kind === 'network') {
+      if (err.kind === 'auth') {
         await this.serverFailed(err);
       } else {
+        // A network error waits for the monitor check, once a minute: one
+        // lost answer is not an outage.
         logger.debug(`Cannot read the new events: ${err.message}`);
       }
     }
@@ -759,13 +781,23 @@ export class ZoneMinderHub {
     if (!MODES.includes(mode)) {
       throw new Error(`Unknown mode "${mode}": ${MODES.join(', ')}`);
     }
+    if (!this.client) {
+      throw new Error('No ZoneMinder address in the configuration');
+    }
+    const off = monitors.find((monitor) => !monitor.enabled);
+    if (off) {
+      // 1.36 would start the capture of a monitor whose function is None.
+      throw new Error(`Monitor ${off.id} is turned off in ZoneMinder: turn it on there first`);
+    }
     const changed = monitors.filter((monitor) => monitor.mode !== mode);
     // A change restarts the capture of the monitor: not an outage.
     this.restartUntil = Date.now() + this.timings.restartGraceMs;
     for (const monitor of changed) {
       await this.client.setMode(monitor, mode);
       monitor.mode = mode;
-      if (!ALARM_MODES.includes(mode) && monitor.alarm) {
+      monitor.analysing = analysesIn(mode, monitor.split);
+      monitor.modeWrittenAt = Date.now();
+      if (!monitor.analysing && monitor.alarm) {
         monitor.alarm = false;
       }
     }
@@ -782,7 +814,10 @@ export class ZoneMinderHub {
 
   /** Start or cancel a forced alarm (it lasts until cancelled). */
   async forceAlarm(monitor, on) {
-    if (on && !ALARM_MODES.includes(monitor.mode)) {
+    if (!this.client) {
+      throw new Error('No ZoneMinder address in the configuration');
+    }
+    if (on && !monitor.analysing) {
       // 1.36 refuses, 1.38 holds the request until it times out.
       throw new ZoneMinderError(`Monitor ${monitor.id} does not analyse its images`, {
         kind: 'mode',
