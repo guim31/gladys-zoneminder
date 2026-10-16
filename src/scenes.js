@@ -1,41 +1,59 @@
 // -----------------------------------------------------------------------------
-// Scene actions (SDK v0.14+, Gladys 5.1+).
+// Scene actions (manifest `scene_actions`, Gladys 5.1+).
 //
-// A scene action is an OPERATION a scene author places in a scene, with
-// parameters and a result: "identify this device", "take a snapshot", "clean
-// these rooms". Each one is declared in the manifest `scene_actions` field
-// (key, label, `fields` in the config_schema grammar, scalar `outputs`) and
-// handled here, keyed by that same `key`; index.js registers every entry with
-// `gladys.onSceneAction(key, ...)`.
-//
-// Scene TRIGGERS are the other direction ("this happened"): they are fired by
-// the device that observes the event, see src/devices/motionSensor.js.
-//
-// The rules that matter:
-//   - `fields` arrive RESOLVED: scene variables substituted, defaults applied,
-//     validated by the core; a `"source": "devices"` field is the chosen
-//     device external_id;
-//   - resolve an object of the declared `outputs` (scalars only), readable by
-//     the following actions of the scene, or `undefined` for none. Keys not
-//     declared in the manifest are dropped by the core;
-//   - throwing fails THIS action only: the scene logs it and continues. A
-//     scene action is never a condition: return an output and let the scene
-//     author gate on it;
-//   - never fire a scene event as a consequence of a received action: a scene
-//     bound to that event would loop through the integration.
+// Gladys can already set the mode of one camera from a scene ("Control a
+// device"); what these actions add: the mode of EVERY monitor at once (the
+// "alarm armed" scene: everything in Modect), a forced alarm started or
+// cancelled (ZoneMinder records it as an event, e.g. when a door opens), and
+// the state of a monitor as values the next actions can test.
 // -----------------------------------------------------------------------------
 
-import { createLogger } from '@gladysassistant/integration-sdk';
-import { signalDevice } from './devices/index.js';
+import { MODES } from './zoneminder/client.js';
 
-const logger = createLogger({ name: 'scenes' });
+export const ALARM_COMMANDS = { start: true, cancel: false };
+
+function monitorOf(hub, fields) {
+  if (!fields?.camera) {
+    throw new Error('Choose a camera');
+  }
+  return hub.require(fields.camera);
+}
+
+async function setMode(hub, { fields }) {
+  if (!MODES.includes(fields?.mode)) {
+    throw new Error(`Unknown mode "${fields?.mode}": ${MODES.join(', ')}`);
+  }
+  const monitors = fields?.camera ? [hub.require(fields.camera)] : [...hub.monitors.values()];
+  if (monitors.length === 0) {
+    throw new Error('No ZoneMinder monitor known');
+  }
+  const changed = await hub.setMode(monitors, fields.mode);
+  return { cameras: changed };
+}
+
+async function forceAlarm(hub, { fields }) {
+  const on = ALARM_COMMANDS[fields?.command];
+  if (on === undefined) {
+    throw new Error(`Unknown command "${fields?.command}": start or cancel`);
+  }
+  await hub.forceAlarm(monitorOf(hub, fields), on);
+}
+
+async function getStatus(hub, { fields }) {
+  const monitor = monitorOf(hub, fields);
+  // A fresh read: the action is often the first step of a scene.
+  await hub.poll(monitor);
+  return {
+    online: monitor.online === true,
+    alarm: monitor.alarm === true,
+    enabled: monitor.enabled === true,
+    mode: monitor.mode ?? '',
+    events_today: monitor.eventsToday ?? 0,
+  };
+}
 
 export const SCENE_ACTIONS = {
-  // The ack is awaited under the action's `timeout_seconds` (15 s in the
-  // manifest), counted from the moment the scene reaches the action.
-  async identify_device(gladys, { fields, config }) {
-    logger.info(`Scene action identify_device <- ${fields.device}`);
-    const signalled = await signalDevice(gladys, fields.device, config);
-    return { signalled };
-  },
+  set_mode: setMode,
+  force_alarm: forceAlarm,
+  get_status: getStatus,
 };

@@ -1,0 +1,132 @@
+# ZoneMinder
+
+Trae a Gladys los monitores de un servidor [ZoneMinder](https://zoneminder.com/): su imagen, si están en
+alarma, su modo (Monitor, Modect, Record, Mocord, Nodect), si capturan, y el número de eventos del día.
+Un nuevo evento dispara una escena con su causa y su puntuación, y la imagen del momento, que una escena
+puede enviarle. Las escenas también pueden poner todos los monitores en Modect cuando usted se va, y
+activar una alarma forzada.
+
+Probada con servidores ZoneMinder reales en Docker (1.36.4 y 1.38.6) con cámaras de red simuladas, aún
+no en una instalación en servicio desde hace tiempo: sus comentarios son bienvenidos en
+[GitHub](https://github.com/guim31/gladys-zoneminder/issues) o en el foro de Gladys.
+
+## Lo que necesita
+
+- Gladys 5.1 o posterior.
+- Un servidor ZoneMinder accesible desde Gladys en la red local, versión 1.34 o posterior (su API da
+  tokens desde la 1.34). Se admiten la 1.36 y las 1.37+: a partir de la 1.37, el modo está hecho de los
+  ajustes «Analysing» y «Recording», que la integración lee y escribe.
+- La API activada: **Options → System → OPT_USE_API** (activada por defecto).
+- Si ZoneMinder pide un inicio de sesión (**OPT_USE_AUTH**), una cuenta con **API Enabled** marcado en
+  **Options → Users**. Leer requiere «Monitors: View» y «Events: View»; cambiar el modo requiere
+  «Monitors: Edit».
+
+## Instalación
+
+1. En Gladys, abra **Integraciones**, busque **ZoneMinder** e instálela.
+2. En su pestaña **Configuración**, rellene:
+   - **Dirección de ZoneMinder**: la dirección de la página web de ZoneMinder, p. ej.
+     `http://192.168.1.20/zm`. Sin ruta, se prueban `/zm` y luego `/` (algunas imágenes Docker sirven
+     ZoneMinder en la raíz). Añada `https://` o un puerto si es necesario.
+   - **Usuario** (`admin` por defecto) y **Contraseña**. Deje el usuario vacío si ZoneMinder no tiene
+     inicio de sesión.
+   - **Comprobación de alarmas**: con qué frecuencia se leen el estado de alarma y los nuevos eventos de
+     los monitores añadidos en Gladys (2, 5, 10 o 30 segundos, 5 por defecto).
+   - **Actualización de imágenes**: con qué frecuencia se envía la imagen de cada cámara a Gladys (de 10
+     segundos a 15 minutos, 1 minuto por defecto). Una alarma o un evento nuevo también envía una al
+     instante.
+   - **Idioma de los nombres**: el idioma de los nombres de funciones dados al añadir una cámara.
+3. Guarde y abra la pestaña **Descubrir**: un dispositivo por monitor. Añada los que quiera.
+4. **Comprobar la conexión** muestra lo que lee la integración: la versión de ZoneMinder, cada monitor,
+   si recibe imágenes y su modo.
+
+## Los dispositivos de Gladys
+
+Cada monitor se convierte en una cámara de Gladys, con el nombre del monitor, con:
+
+| Función            | Qué es                                                                                  |
+| ------------------ | --------------------------------------------------------------------------------------- |
+| **Imagen**         | La imagen de la cámara, enviada al ritmo elegido y al instante con una alarma o evento. |
+| **Alarma**         | 1 mientras ZoneMinder indica el monitor en alarma (movimiento, forzada), si no 0.       |
+| **Modo**           | Monitor, Modect, Record, Mocord o Nodect. Se puede cambiar desde el panel.              |
+| **Captura activa** | 1 cuando el monitor está activado y captura, 0 cuando está apagado en ZoneMinder.       |
+| **Eventos de hoy** | Eventos empezados desde medianoche en este monitor.                                     |
+
+El **Modo** es una lista, a propósito: una elección deliberada, nunca un interruptor que un asistente
+de voz apagaría por error. **Captura activa** es de solo lectura: apagar una cámara de vigilancia sigue
+siendo una decisión tomada en ZoneMinder. Un monitor que ya no recibe imágenes de su cámara aparece
+inaccesible en Gladys (comprobado cada minuto).
+
+## Widget del panel
+
+**Cámara ZoneMinder** muestra la imagen de una cámara, si está en alarma, su modo, los eventos del día
+y dos botones: **Activar la alarma** (o **Cancelar la alarma** mientras hay una; solo para un monitor en
+Modect, Mocord o Nodect) y **Nueva imagen**.
+
+## Escenas
+
+### Disparadores
+
+- **ZoneMinder: nuevo evento**: ZoneMinder empieza a grabar un evento. Filtros: la cámara (vacía =
+  todas) y el **Tipo de evento**: Movimiento, Alarma forzada, Grabación continua (los segmentos de
+  Record y Mocord), Pérdida de señal, Monitor vinculado, Otro. Variables: nombre de la cámara, tipo,
+  causa (como la escribe ZoneMinder, p. ej. `Motion: All`), puntuación (la más alta cuando se ve el
+  evento; aún puede subir) y número del evento. La imagen del momento se envía primero a Gladys.
+- **ZoneMinder: cámara sin conexión**: un monitor deja de recibir imágenes de su cámara, o el propio
+  ZoneMinder deja de responder. No se dispara para un monitor apagado en ZoneMinder.
+
+### Acciones
+
+- **ZoneMinder: cambiar el modo**: ajusta el modo de una cámara, o de todas cuando la cámara se deja
+  vacía. Solo se escriben los monitores cuyo modo cambia (cada uno se reinicia unos segundos). Salida:
+  el número de cámaras modificadas.
+- **ZoneMinder: alarma forzada**: **Activar** hace que ZoneMinder grabe un evento (causa «Forced Web»)
+  hasta **Cancelar**. Solo para un monitor en Modect, Mocord o Nodect.
+- **ZoneMinder: leer una cámara**: lee una cámara ahora. Salidas: recibe imágenes, en alarma, captura
+  activa, modo (`monitor`, `modect`…) y eventos de hoy, para las condiciones de las acciones siguientes.
+
+La acción del núcleo **Enviar una imagen de cámara** envía la última imagen de una cámara: justo después
+de **ZoneMinder: nuevo evento**, es la imagen de ese evento.
+
+### Ideas de escenas
+
+- **Alarma armada**: cuando todos se han ido, **ZoneMinder: cambiar el modo** a Modect para todas las
+  cámaras; vuelta a Monitor cuando alguien llega.
+- **Intrusión**: **ZoneMinder: nuevo evento**, tipo Movimiento, cámara «Jardín», con la alarma armada →
+  **Enviar una imagen de cámara** de esa cámara a su teléfono.
+- **Puerta abierta de noche**: un sensor de apertura se abre → **ZoneMinder: alarma forzada**, Activar,
+  en la cámara de la entrada; Cancelar dos minutos después.
+- **Cámara perdida**: **ZoneMinder: cámara sin conexión** → enviar un mensaje con el nombre de la
+  cámara.
+
+## Solución de problemas
+
+- **«ZoneMinder rechaza el usuario o la contraseña»**: compruébelos en la página de inicio de sesión de
+  ZoneMinder.
+- **«Este usuario de ZoneMinder no puede usar la API»**: marque **API Enabled** para este usuario en
+  **Options → Users**.
+- **«ZoneMinder responde, pero no como se esperaba»**: quizá falta la ruta en la dirección. Pruebe
+  `http://<dirección>/zm`, o la dirección que usa en un navegador, sin `index.php`.
+- **«Insufficient privileges» al cambiar un modo**: la cuenta necesita «Monitors: Edit».
+- **Se rechaza una alarma forzada**: el monitor no analiza sus imágenes (Monitor o Record). Póngalo
+  primero en Modect, Mocord o Nodect.
+- **Una cámara sigue inaccesible**: ZoneMinder no recibe imágenes de ella (su estado no es «Connected»
+  en la consola de ZoneMinder). Compruebe la cámara en ZoneMinder.
+- **Más detalles**: los registros de la integración (Integraciones → ZoneMinder → Registros); ponga
+  `LOG_LEVEL` en `debug` para ver cada petición.
+
+## Límites
+
+- Sin vídeo en directo: Gladys muestra imágenes, enviadas al ritmo elegido (Gladys guarda 12 imágenes
+  por minuto y por cámara como máximo). La emisión en directo se ve en ZoneMinder.
+- Las alarmas y los eventos se leen cada pocos segundos (la comprobación de alarmas): una alarma muy
+  corta entre dos lecturas aparece como evento, no como estado de alarma.
+- **Eventos de hoy** cuenta desde medianoche, en la zona horaria de ZoneMinder: Gladys y ZoneMinder
+  deben compartirla.
+- Un servidor ZoneMinder por integración. Con varios servidores ZoneMinder (multiservidor), las
+  imágenes de un monitor se piden a la dirección de la configuración.
+- El modo «None» (sin captura) y apagar un monitor no se ofrecen: hágalo en ZoneMinder.
+- Desarrollada sin una instalación ZoneMinder en servicio desde hace tiempo: sus comentarios son
+  bienvenidos.
+
+Esta integración no está afiliada al proyecto ZoneMinder.

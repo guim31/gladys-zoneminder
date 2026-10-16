@@ -30,6 +30,17 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+The integration stores nothing under `/data`. The ZoneMinder password is kept
+by Gladys in the integration configuration; the container holds it in memory
+only, and never writes it in a log line or a message. It is sent to
+`POST /api/host/login.json` when the integration logs in (at start, then about
+every two hours), in clear text over plain HTTP: put ZoneMinder behind HTTPS if
+the network between Gladys and ZoneMinder is not trusted. The access token it
+gets back travels in the address of each request, as the ZoneMinder API wants
+it; ZoneMinder repeats that address in its error answers, which the integration
+never logs. The integration only talks to the ZoneMinder address of the
+configuration, on the local network, and opens no port.
+
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+and ZoneMinder and the cameras it records.

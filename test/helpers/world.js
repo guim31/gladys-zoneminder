@@ -1,0 +1,57 @@
+// -----------------------------------------------------------------------------
+// A complete test world: the SDK's fake Gladys and a simulated ZoneMinder
+// (test/helpers/fakeZoneMinder.js), with the integration wired on top through
+// registerHandlers. No periodic timer runs: the tests call the hub's cycles.
+// -----------------------------------------------------------------------------
+
+import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
+import { registerHandlers } from '../../src/app.js';
+import { FakeZoneMinder } from './fakeZoneMinder.js';
+
+// The integration logs every change; keep the test output readable.
+process.env.LOG_LEVEL ??= 'silent';
+
+export const DEFAULT_CONFIG = {
+  url: '192.0.2.10',
+  username: 'admin',
+  password: 'secret',
+  language: 'en',
+};
+
+export const FAST = { minImageSpacingMs: 0, offlineAfter: 2, restartGraceMs: 0 };
+
+// The recorded events are of 16 October 2026.
+export const NOW = () => new Date(2026, 9, 16, 12, 0, 0);
+
+/**
+ * @param {object} [options]
+ * @param {FakeZoneMinder} [options.server]
+ * @param {object} [options.config] raw integration config
+ * @param {Array} [options.created] devices already created in Gladys
+ */
+export async function createWorld({
+  server = new FakeZoneMinder(),
+  config = DEFAULT_CONFIG,
+  created = [],
+  connect = true,
+  timings = FAST,
+} = {}) {
+  const gladys = createFakeGladys({ config, devices: created });
+  const app = registerHandlers(gladys, { fetch: server.fetch, timers: false, timings, now: NOW });
+  if (connect) {
+    await gladys.connect();
+    await app.ready;
+    await app.hub.idle();
+  }
+  return { gladys, fake: gladys.fake, server, app, hub: app.hub };
+}
+
+/** Add every discovered device in Gladys, as the user would. */
+export async function createAll(world) {
+  for (const device of world.fake.discoveredDevices) {
+    await world.fake.deviceCreated(device);
+  }
+  await world.hub.idle();
+}
+
+export { FakeZoneMinder };

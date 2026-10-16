@@ -1,77 +1,85 @@
+// The `camera` widget: content inside the core's vocabulary and budget, the
+// image served, the forced alarm and refresh buttons.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateWidgetContent } from '@gladysassistant/integration-sdk';
-import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
-import { buildDiscoveredDevices } from '../src/devices/index.js';
-import { simulateLanSession } from '../src/devices/plug.js';
-import { DEMO_STATUS_WIDGET, WIDGETS, refreshWidgets } from '../src/widgets.js';
-import { normalizeConfig } from '../src/config.js';
+import { validateWidgetContent, validateWidgetImage } from '@gladysassistant/integration-sdk';
+import { ACTIONS } from '../src/widgets.js';
+import { createAll, createWorld } from './helpers/world.js';
 
-const gladys = createFakeGladys();
-const config = normalizeConfig();
-const demoStatus = WIDGETS[DEMO_STATUS_WIDGET];
+const get = (world, camera, language = 'en') =>
+  world.fake.widgetGet('camera', { settings: { camera }, language });
 
-// What the SDK passes to onWidgetGet, plus the config index.js adds.
-const getContent = (cfg = config) =>
-  demoStatus.get(gladys, { settings: {}, language: 'en', units: 'metric', config: cfg });
-
-test('the demo_status content is rendered exactly as sent', async () => {
-  // [] = nothing the core would drop, truncate or trim to the content budget.
-  assert.deepEqual(validateWidgetContent(await getContent()), []);
-});
-
-test('the degraded plug connection content is valid too', async () => {
-  simulateLanSession(false);
-  try {
-    const content = await getContent();
-    assert.deepEqual(validateWidgetContent(content), []);
-    const status = content.components.find((component) => component.type === 'status');
-    assert.ok(
-      status.items.some((item) => item.color === 'warning'),
-      'degraded shows a warning',
+test('the widget shows the image, alarm, mode, events and two buttons', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createAll(world);
+  const [device] = world.fake.discoveredDevices;
+  world.server.alarm.set(1, 2);
+  await world.hub.pollAll();
+  for (const language of ['en', 'fr', 'de', 'es']) {
+    const ack = await get(world, device.external_id, language);
+    assert.equal(ack.success, true, ack.error);
+    const { content } = ack.data;
+    assert.deepEqual(validateWidgetContent(content), [], language);
+    assert.deepEqual(
+      content.components.map((component) => component.type),
+      ['text', 'image', 'status', 'button', 'button'],
     );
-  } finally {
-    simulateLanSession(true);
+    assert.equal(content.components[3].action.key, ACTIONS.CANCEL);
+    if (language === 'fr') {
+      assert.deepEqual(
+        content.components[2].items.map((item) => item.value),
+        ['En alarme', 'Modect', 0],
+      );
+      assert.equal(content.components[3].label, 'Annuler l’alarme');
+    }
+    const image = await world.fake.widgetGetImage(content.components[1].key);
+    assert.equal(image.success, true, image.error);
+    assert.deepEqual(validateWidgetImage(image.data.image), []);
   }
 });
 
-test('the live tiles reference features the integration publishes', async () => {
-  const featureIds = new Set(
-    buildDiscoveredDevices(gladys, config).flatMap((device) =>
-      device.features.map((feature) => feature.external_id),
-    ),
-  );
-  const liveTiles = (await getContent()).components.filter((c) => c.device_feature);
-  assert.ok(liveTiles.length > 0, 'the template demonstrates a device-bound tile');
-  for (const tile of liveTiles) {
-    assert.ok(featureIds.has(tile.device_feature), `unknown feature ${tile.device_feature}`);
-  }
-});
-
-test('every button action of the content is handled and answers a short toast', async () => {
-  const buttons = (await getContent()).components.filter((c) => c.type === 'button' && c.action);
-  assert.ok(buttons.length > 0, 'the template demonstrates a widget action');
-  for (const { action } of buttons) {
-    const message = await demoStatus.action(gladys, {
-      actionKey: action.key,
-      params: action.params ?? {},
-      settings: {},
-      config,
-    });
-    assert.ok(message.en, 'the toast carries at least the mandatory `en` text');
-    assert.ok(message.en.length <= 200, 'toasts are capped at 200 characters');
-  }
-});
-
-test('an unknown widget action fails, so the user sees the error', async () => {
-  await assert.rejects(
-    demoStatus.action(gladys, { actionKey: 'unknown', params: {}, settings: {}, config }),
-    /Unknown widget action/,
+test('a monitor that does not analyse: no alarm button, the refresh one only', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createAll(world);
+  const garage = world.fake.discoveredDevices[1];
+  const ack = await get(world, garage.external_id);
+  const buttons = ack.data.content.components.filter((component) => component.type === 'button');
+  assert.deepEqual(
+    buttons.map((button) => button.action.key),
+    [ACTIONS.REFRESH],
   );
 });
 
-test('refreshWidgets nudges every widget', () => {
-  const fresh = createFakeGladys();
-  refreshWidgets(fresh);
-  assert.deepEqual(fresh.fake.widgetRefreshes, Object.keys(WIDGETS));
+test('the alarm button starts a forced alarm in ZoneMinder', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  await createAll(world);
+  const porch = world.fake.discoveredDevices[2];
+  const ack = await world.fake.widgetAction(
+    'camera',
+    ACTIONS.START,
+    {},
+    { settings: { camera: porch.external_id } },
+  );
+  assert.equal(ack.success, true, ack.error);
+  assert.match(ack.data.message.fr, /Alarme forcée déclenchée/);
+  assert.deepEqual(world.server.writes, [{ id: 3, command: 'on' }]);
+  const refresh = await world.fake.widgetAction(
+    'camera',
+    ACTIONS.REFRESH,
+    {},
+    { settings: { camera: porch.external_id } },
+  );
+  assert.equal(refresh.success, true, refresh.error);
+});
+
+test('without a camera, or with one ZoneMinder no longer has: a sentence', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  let ack = await world.fake.widgetGet('camera', { settings: {}, language: 'de' });
+  assert.match(ack.data.content.components[0].text, /Wähle/);
+  ack = await get(world, 'ext:x:monitor:9');
+  assert.match(ack.data.content.components[0].text, /no longer in ZoneMinder/);
 });
