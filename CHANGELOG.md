@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-16
+
 ### Added
 
 - ZoneMinder servers (1.36 and later, tested on 1.36 and 1.38), reached at the
@@ -26,3 +28,6 @@ the notes of the version's GitHub Release.
   all of them), "ZoneMinder: forced alarm" and "ZoneMinder: read a camera";
   dashboard widget "ZoneMinder camera"; action "Check the connection".
 - Texts and documentation in English, French, German and Spanish.
+
+[Unreleased]: https://github.com/guim31/gladys-zoneminder/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-zoneminder/releases/tag/v1.0.0
