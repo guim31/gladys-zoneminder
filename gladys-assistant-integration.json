@@ -8,8 +8,8 @@
     "de": "ZoneMinder-Monitore: Bilder, Alarme, Ereignisse, Modi und erzwungene Alarme, vom eigenen Server.",
     "es": "Monitores ZoneMinder: imágenes, alarmas, eventos, modos y alarmas forzadas, desde su servidor."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/guim31/gladys-zoneminder:1.0.0",
+  "version": "1.0.1",
+  "docker_image": "ghcr.io/guim31/gladys-zoneminder:1.0.1",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-zoneminder/main/cover.png",
   "categories": ["security"],
