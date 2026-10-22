@@ -42,7 +42,7 @@ for (const version of ['1.36', '1.38']) {
     // Garage: Monitor, and no frames (its camera does not answer).
     assert.equal(lastState(world, 2, 'mode'), 'monitor');
     assert.equal(lastState(world, 3, 'mode'), version === '1.36' ? 'nodect' : 'modect');
-    assert.equal(lastState(world, 1, 'enabled'), 1);
+    assert.equal(lastState(world, 1, 'capture-on'), 1);
     assert.equal(lastState(world, 1, 'events-today'), 1);
     assert.equal(lastState(world, 1, 'alarm'), 0);
     const transports = Object.fromEntries(
@@ -149,7 +149,7 @@ test('a monitor turned off in ZoneMinder: capture 0, no offline trigger', async 
   await world.hub.refresh();
   await world.hub.refresh();
   await world.hub.idle();
-  assert.equal(lastState(world, 1, 'enabled'), 0);
+  assert.equal(lastState(world, 1, 'capture-on'), 0);
   assert.deepEqual(world.fake.sceneEvents, []);
 });
 
@@ -381,4 +381,66 @@ test('ZoneMinder 1.38: forced alarm follows Analysing, not the mode name', async
   await world.hub.refresh();
   ack = await world.fake.sceneAction('force_alarm', { camera: idOf(world, 2), command: 'start' });
   assert.equal(ack.success, true, ack.error);
+});
+
+// Up to 1.0.x "Capture on" was `camera/enabled`, the privacy mode of Gladys 5.2.
+const legacyMonitor = (id, { legacy }) => {
+  const device = `ext:test-integration:monitor:${id}`;
+  const feature = (key, category, type) => ({
+    external_id: `${device}:${key}`,
+    category,
+    type,
+    read_only: true,
+  });
+  return {
+    name: `Monitor ${id}`,
+    external_id: device,
+    params: [{ name: 'ZONEMINDER_MONITOR_ID', value: String(id) }],
+    features: [
+      feature('image', 'camera', 'image'),
+      feature('alarm', 'motion-sensor', 'binary'),
+      legacy ? feature('enabled', 'camera', 'enabled') : feature('capture-on', 'input', 'binary'),
+    ],
+  };
+};
+
+test('no camera/enabled feature: it is the privacy mode of Gladys 5.2', async (t) => {
+  const world = await createWorld();
+  t.after(() => world.app.stop());
+  for (const device of world.fake.discoveredDevices) {
+    for (const feature of device.features) {
+      assert.notEqual(`${feature.category}/${feature.type}`, 'camera/enabled', feature.external_id);
+      assert.doesNotMatch(feature.external_id, /:enabled$/, 'the old key is never reused');
+    }
+    const on = device.features.find((item) => item.external_id.endsWith(':capture-on'));
+    assert.deepEqual([on.category, on.type, on.read_only], ['input', 'binary', true]);
+  }
+});
+
+test('a device added in 1.0.x: its old camera/enabled is set to 1 once, then left alone', async (t) => {
+  const world = await createWorld({
+    created: [legacyMonitor(1, { legacy: true }), legacyMonitor(3, { legacy: false })],
+  });
+  t.after(() => world.app.stop());
+  const old = `${idOf(world, 1)}:enabled`;
+  const writes = (id) => world.fake.states.filter((item) => item.device_feature_external_id === id);
+  assert.deepEqual(
+    writes(old).map((item) => item.state),
+    [1],
+  );
+  // The device without the old feature gets nothing on that key.
+  assert.deepEqual(writes(`${idOf(world, 3)}:enabled`), []);
+  // Turned off in ZoneMinder, then Gladys comes back: the old feature is never written again.
+  world.server.set(1, 'Enabled', 0);
+  world.server.setStatus(1, 'NotRunning');
+  await world.hub.refresh();
+  await world.hub.refresh();
+  await world.hub.idle();
+  assert.equal(lastState(world, 1, 'capture-on'), 0);
+  await world.hub.resync(world.hub.config);
+  await world.hub.idle();
+  assert.deepEqual(
+    writes(old).map((item) => item.state),
+    [1],
+  );
 });

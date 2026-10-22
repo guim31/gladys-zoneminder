@@ -57,6 +57,12 @@ de voz apagaría por error. **Captura activa** es de solo lectura: apagar una c�
 siendo una decisión tomada en ZoneMinder. Un monitor que ya no recibe imágenes de su cámara aparece
 inaccesible en Gladys (comprobado cada minuto).
 
+**Monitores añadidos con la versión 1.0.x**: su antigua funcionalidad **Captura activa** era del
+tipo Gladys «cámara activada», que Gladys 5.2 usa como modo de privacidad de la cámara (a 0, Gladys
+rechaza sus imágenes). Abra la pestaña Descubrir de la integración y haga clic en
+**Actualizar** en cada monitor: la funcionalidad se sustituye por la nueva. Mientras tanto, la
+integración vuelve a poner la antigua a 1 una vez al arrancar, para que las imágenes sigan llegando.
+
 ## Widget del panel
 
 **Cámara ZoneMinder** muestra la imagen de una cámara, si está en alarma, su modo, los eventos del día

@@ -6,8 +6,11 @@
 //   - `mode`: the function of the monitor (`text/select`, values `monitor`,
 //     `modect`, `record`, `mocord`, `nodect`), which the dashboard can change:
 //     a deliberate choice in a list, never a toggle a voice assistant flips;
-//   - `enabled`: the monitor captures (`camera/enabled`), read only: turning
-//     a surveillance camera off stays a decision made in ZoneMinder;
+//   - `capture-on`: the monitor captures (`input/binary`), read only: turning
+//     a surveillance camera off stays a decision made in ZoneMinder. Never
+//     `camera/enabled`: since Gladys 5.2 that is the user's privacy mode, and
+//     at 0 the core refuses the camera's images. Up to 1.0.x it was published
+//     under the key `enabled` (LEGACY_ENABLED_KEY);
 //   - `events-today`: events started since midnight (`counter-sensor/integer`).
 // Whether frames come in is the device's transport badge (`local` /
 // `unreachable`) and the "Monitor offline" scene trigger, not a feature.
@@ -23,9 +26,13 @@ export const FEATURE_KEYS = {
   IMAGE: 'image',
   ALARM: 'alarm',
   MODE: 'mode',
-  ENABLED: 'enabled',
+  CAPTURE_ON: 'capture-on',
   EVENTS_TODAY: 'events-today',
 };
+
+// The `camera/enabled` feature of the 1.0.x devices, still in Gladys until the
+// user clicks "Update" in the Discovery tab. Never reused for anything else.
+export const LEGACY_ENABLED_KEY = 'enabled';
 
 // Feature names, frozen when the user adds the device.
 export const NAMES = {
@@ -34,7 +41,7 @@ export const NAMES = {
     image: 'Image',
     alarm: 'Alarm',
     mode: 'Mode',
-    enabled: 'Capture on',
+    capture_on: 'Capture on',
     events_today: 'Events today',
   },
   fr: {
@@ -42,7 +49,7 @@ export const NAMES = {
     image: 'Image',
     alarm: 'Alarme',
     mode: 'Mode',
-    enabled: 'Capture active',
+    capture_on: 'Capture active',
     events_today: "Événements aujourd'hui",
   },
   de: {
@@ -50,7 +57,7 @@ export const NAMES = {
     image: 'Bild',
     alarm: 'Alarm',
     mode: 'Modus',
-    enabled: 'Aufnahme aktiv',
+    capture_on: 'Aufnahme aktiv',
     events_today: 'Ereignisse heute',
   },
   es: {
@@ -58,7 +65,7 @@ export const NAMES = {
     image: 'Imagen',
     alarm: 'Alarma',
     mode: 'Modo',
-    enabled: 'Captura activa',
+    capture_on: 'Captura activa',
     events_today: 'Eventos de hoy',
   },
 };
@@ -153,10 +160,10 @@ export function featureSpecs(language) {
       })),
     },
     {
-      key: FEATURE_KEYS.ENABLED,
-      category: 'camera',
-      type: 'enabled',
-      name: names.enabled,
+      key: FEATURE_KEYS.CAPTURE_ON,
+      category: 'input',
+      type: 'binary',
+      name: names.capture_on,
       min: 0,
       max: 1,
       read_only: true,

@@ -56,6 +56,12 @@ off by mistake. **Capture on** is read only: turning a surveillance camera off s
 ZoneMinder. A monitor that receives no images from its camera shows as unreachable in Gladys (checked
 every minute).
 
+**Monitors added with version 1.0.x**: their old **Capture on** feature was of the Gladys type
+"camera enabled", which Gladys 5.2 uses as the privacy mode of the camera (at 0, Gladys refuses its
+images). Open the Discovery tab of the integration and click **Update** on each monitor: the feature
+is replaced by the new one. Until then, the integration sets the old one to 1 once at startup, so
+the images keep flowing.
+
 ## Dashboard widget
 
 **ZoneMinder camera** shows the image of a camera, whether it is in alarm, its mode, the events of the

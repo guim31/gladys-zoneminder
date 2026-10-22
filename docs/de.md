@@ -57,6 +57,12 @@ Sprachassistent versehentlich ausschaltet. **Aufnahme aktiv** ist nur lesbar: ei
 auszuschalten bleibt eine Entscheidung in ZoneMinder. Ein Monitor, der keine Bilder mehr von seiner
 Kamera bekommt, erscheint in Gladys als nicht erreichbar (jede Minute geprüft).
 
+**Mit Version 1.0.x hinzugefügte Monitore**: Die alte Funktion **Aufnahme aktiv** hatte den
+Gladys-Typ „Kamera aktiviert", den Gladys 5.2 als Privatsphäre-Modus der Kamera nutzt (bei 0
+verweigert Gladys ihre Bilder). Öffne den Tab „Entdecken" der Integration und klicke bei jedem
+Monitor auf **Aktualisieren**: Die Funktion wird durch die neue ersetzt. Bis dahin setzt die
+Integration die alte beim Start einmal auf 1, damit die Bilder weiter ankommen.
+
 ## Dashboard-Widget
 
 **ZoneMinder-Kamera** zeigt das Bild einer Kamera, ob sie im Alarm ist, ihren Modus, die Ereignisse

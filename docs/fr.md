@@ -58,6 +58,12 @@ couperait par erreur. **Capture active** est en lecture seule : couper une camé
 une décision prise dans ZoneMinder. Un moniteur qui ne reçoit plus d'images de sa caméra apparaît
 injoignable dans Gladys (vérifié chaque minute).
 
+**Moniteurs ajoutés avec la version 1.0.x** : leur ancienne fonctionnalité **Capture active** était
+du type Gladys « caméra activée », que Gladys 5.2 utilise comme mode confidentialité de la caméra (à
+0, Gladys refuse ses images). Ouvrez l'onglet Découverte de l'intégration et cliquez sur **Mettre à
+jour** sur chaque moniteur : la fonctionnalité est remplacée par la nouvelle. D'ici là, l'intégration
+remet l'ancienne à 1 une fois au démarrage, pour que les images continuent d'arriver.
+
 ## Widget du tableau de bord
 
 **Caméra ZoneMinder** montre l'image d'une caméra, si elle est en alarme, son mode, les événements du

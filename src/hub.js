@@ -18,7 +18,14 @@
 
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { connectionKey } from './config.js';
-import { FEATURE_KEYS, buildDevice, deviceIds, deviceName, featureKeyOf } from './devices.js';
+import {
+  FEATURE_KEYS,
+  LEGACY_ENABLED_KEY,
+  buildDevice,
+  deviceIds,
+  deviceName,
+  featureKeyOf,
+} from './devices.js';
 import {
   analysesIn,
   ALARM_STATES,
@@ -89,6 +96,8 @@ export class ZoneMinderHub {
     this.client = null;
     this.clientKey = null;
     this.monitors = new Map();
+    // Legacy `camera/enabled` features already set to 1 (releaseLegacyEnabled).
+    this.legacyReleased = new Set();
     // null (not tried yet), 'ok', 'auth', 'apiDisabled', 'unreachable', 'error', 'noUrl'
     this.server = null;
     this.lastEventId = null;
@@ -107,6 +116,7 @@ export class ZoneMinderHub {
         ? `Starting with the ZoneMinder server ${this.client.origin}`
         : 'No valid ZoneMinder address in the configuration',
     );
+    await this.releaseLegacyEnabled();
     await this.refresh();
     this.startTimers();
   }
@@ -119,6 +129,7 @@ export class ZoneMinderHub {
     for (const device of this.gladys.devices ?? []) {
       this.gladys.forgetPublishedStates(device.external_id);
     }
+    await this.releaseLegacyEnabled();
     await this.publishAllStates();
     await this.publishTransports();
   }
@@ -429,7 +440,7 @@ export class ZoneMinderHub {
     const ids = this.ids(monitor);
     const states = [
       {
-        device_feature_external_id: ids.feature(FEATURE_KEYS.ENABLED),
+        device_feature_external_id: ids.feature(FEATURE_KEYS.CAPTURE_ON),
         state: monitor.enabled ? 1 : 0,
       },
     ];
@@ -452,6 +463,45 @@ export class ZoneMinderHub {
       });
     }
     return states;
+  }
+
+  /**
+   * Up to 1.0.x the monitor device carried "Capture on" as `camera/enabled`,
+   * which Gladys 5.2 reads as the user's privacy mode: at 0 the core refuses
+   * the camera's images. The feature stays on the devices added before, until
+   * the user clicks "Update" in the Discovery tab: set it to 1 once, so the
+   * images flow, then never write it again (it is the user's switch now).
+   */
+  async releaseLegacyEnabled() {
+    const states = [];
+    for (const device of this.gladys.devices ?? []) {
+      for (const feature of device.features ?? []) {
+        const id = feature?.external_id;
+        if (
+          feature.category === 'camera' &&
+          feature.type === 'enabled' &&
+          id === `${device.external_id}:${LEGACY_ENABLED_KEY}` &&
+          !this.legacyReleased.has(id)
+        ) {
+          states.push({ device_feature_external_id: id, state: 1 });
+        }
+      }
+    }
+    if (states.length === 0) {
+      return;
+    }
+    try {
+      await this.gladys.publishStates(states);
+      for (const state of states) {
+        this.legacyReleased.add(state.device_feature_external_id);
+      }
+      logger.info(
+        `${states.length} monitor(s) still have the old "Capture on" feature: click "Update" in the Discovery tab`,
+      );
+    } catch (err) {
+      // Tried again when Gladys comes back.
+      logger.warn(`Cannot reset the old "Capture on" feature: ${err.message}`);
+    }
   }
 
   async publishStates(monitor) {
